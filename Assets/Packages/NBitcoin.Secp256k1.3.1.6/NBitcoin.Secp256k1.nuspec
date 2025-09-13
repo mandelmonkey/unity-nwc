@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>NBitcoin.Secp256k1</id>
+    <version>3.1.6</version>
+    <authors>NBitcoin.Secp256k1</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <icon>icon.png</icon>
+    <projectUrl>https://github.com/MetacoSA/NBitcoin/NBitcoin.Secp256k1</projectUrl>
+    <description>A port of the Secp256k1 project written in C#</description>
+    <copyright>Copyright © Nicolas Dorier 2020</copyright>
+    <tags>bitcoin,secp256k1</tags>
+    <repository type="git" url="https://github.com/MetacoSA/NBitcoin" commit="6b5278fb658e5f6512b6ca0e07d242b392dd8e2e" />
+    <dependencies>
+      <group targetFramework="net6.0" />
+      <group targetFramework=".NETStandard2.1" />
+    </dependencies>
+  </metadata>
+</package>
