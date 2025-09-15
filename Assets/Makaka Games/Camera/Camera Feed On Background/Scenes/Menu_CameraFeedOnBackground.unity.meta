@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: cd127bd151ca54194a086976fbdcb5c5
+timeCreated: 1521815528
+licenseType: Store
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Camera/Camera Feed On Background/Scenes/Menu_CameraFeedOnBackground.unity
+  uploadId: 645356

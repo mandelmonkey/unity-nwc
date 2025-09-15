@@ -159,6 +159,59 @@ namespace NostrWalletConnect
             return await SendRequestAsync(request);
         }
 
+        public async Task RequestWalletInfoEvent()
+        {
+            DebugLogger.LogToFile("📡 Requesting wallet info event (kind 13194)...");
+
+            if (_connection == null || !IsConnected)
+            {
+                DebugLogger.LogToFile("❌ Not connected to relay - cannot request info event");
+                OnError?.Invoke("Not connected to relay");
+                return;
+            }
+
+            try
+            {
+                // Subscribe to kind 13194 events from the wallet
+                var filter = new
+                {
+                    kinds = new[] { 13194 },
+                    authors = new[] { _connection.WalletPubkey },
+                    limit = 1
+                };
+
+                var subscriptionId = "info_event_" + Guid.NewGuid().ToString("N")[..8];
+                var subscribeMessage = new object[]
+                {
+                    "REQ",
+                    subscriptionId,
+                    filter
+                };
+
+                var subscribeJson = JsonConvert.SerializeObject(subscribeMessage);
+                DebugLogger.LogToFile($"📡 Subscribing to wallet info events: {subscribeJson}");
+
+                await _webSocket.SendMessageAsync(subscribeJson);
+
+                // Note: The wallet should respond with a kind 13194 event containing:
+                // {
+                //   "kind": 13194,
+                //   "tags": [
+                //     ["encryption", "nip44_v2 nip04"],
+                //     ["notifications", "payment_received payment_sent"]
+                //   ],
+                //   "content": "pay_invoice get_balance make_invoice lookup_invoice list_transactions get_info notifications"
+                // }
+
+                DebugLogger.LogToFile("✅ Info event subscription sent - watch for kind 13194 events in logs");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogToFile($"❌ Failed to request wallet info event: {ex.Message}");
+                OnError?.Invoke($"Failed to request info event: {ex.Message}");
+            }
+        }
+
         public async Task DetectPreferredEncryptionVersion()
         {
             DebugLogger.LogToFile("🔍 Detecting wallet's preferred encryption method...");
@@ -456,6 +509,13 @@ namespace NostrWalletConnect
         [ContextMenu("Connect")]
         public void ConnectFromInspector()
         {
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                connectionString = PlayerPrefs.GetString("NWC_ConnectionString");
+                
+                Debug.Log($"NWC Connection string: {connectionString}");
+            }
+        
             if (!string.IsNullOrEmpty(connectionString))
             {
                 _ = ConnectAsync(connectionString);

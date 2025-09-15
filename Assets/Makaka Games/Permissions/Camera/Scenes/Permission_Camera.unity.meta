@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 3c084acff26384d8792611153ba5af61
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Permissions/Camera/Scenes/Permission_Camera.unity
+  uploadId: 645356

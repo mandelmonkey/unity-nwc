@@ -12,7 +12,9 @@ namespace NostrWalletConnect
         [SerializeField] private InputField connectionStringInput;
         [SerializeField] private Button connectButton;
         [SerializeField] private Button disconnectButton;
+        [SerializeField] private Button scanQRButton;
         [SerializeField] private Button getInfoButton;
+        [SerializeField] private Button requestInfoEventButton;
         [SerializeField] private Button getBalanceButton;
         [SerializeField] private InputField invoiceAmountInput;
         [SerializeField] private InputField invoiceDescriptionInput;
@@ -25,14 +27,44 @@ namespace NostrWalletConnect
         [Header("NWC Settings")]
         [SerializeField] private NostrWalletConnect nwc;
 
+        [Header("QR Scanner")]
+        [SerializeField] private NWCScannerManager scannerManager;
+        [SerializeField] private ZBDQRScanner zbdQRScanner;
+
         private void Start()
         {
             SetupUI();
             SetupNWCEvents();
+            SetupQRScanner();
+            LoadSavedConnectionString();
+        }
 
-            if (connectionStringInput != null && string.IsNullOrEmpty(connectionStringInput.text))
+        private void SetupQRScanner()
+        {
+            if (zbdQRScanner != null)
             {
-                connectionStringInput.text = "nostr+walletconnect://YOUR_WALLET_PUBKEY?relay=wss://relay.example.com&secret=YOUR_SECRET";
+                zbdQRScanner.OnQRCodeDetected += OnQRCodeScanned;
+                zbdQRScanner.OnNWCConnectionReady += OnNWCConnectionReady;
+                zbdQRScanner.OnScanError += OnQRScanError;
+            }
+        }
+
+        private void LoadSavedConnectionString()
+        {
+            if (connectionStringInput != null)
+            {
+                // Try to load saved connection string
+                string savedConnection = ZBDQRScanner.GetSavedConnectionString();
+
+                if (!string.IsNullOrEmpty(savedConnection))
+                {
+                    connectionStringInput.text = savedConnection;
+                    UpdateStatus("Loaded saved connection string", Color.blue);
+                }
+                else if (string.IsNullOrEmpty(connectionStringInput.text))
+                {
+                    connectionStringInput.text = "nostr+walletconnect://YOUR_WALLET_PUBKEY?relay=wss://relay.example.com&secret=YOUR_SECRET";
+                }
             }
         }
 
@@ -44,8 +76,14 @@ namespace NostrWalletConnect
             if (disconnectButton != null)
                 disconnectButton.onClick.AddListener(() => _ = DisconnectFromWallet());
 
+            if (scanQRButton != null)
+                scanQRButton.onClick.AddListener(StartQRScan);
+
             if (getInfoButton != null)
                 getInfoButton.onClick.AddListener(() => _ = GetWalletInfo());
+
+            if (requestInfoEventButton != null)
+                requestInfoEventButton.onClick.AddListener(() => _ = RequestWalletInfoEvent());
 
             if (getBalanceButton != null)
                 getBalanceButton.onClick.AddListener(() => _ = GetWalletBalance());
@@ -57,6 +95,44 @@ namespace NostrWalletConnect
                 payInvoiceButton.onClick.AddListener(() => _ = PayInvoice());
 
             UpdateButtonStates(false);
+        }
+
+        private void StartQRScan()
+        {
+            if (zbdQRScanner != null)
+            {
+                UpdateStatus("Starting QR scanner...", Color.blue);
+                zbdQRScanner.ShowScanner();
+            }
+            else if (scannerManager != null)
+            {
+                UpdateStatus("Starting QR scanner...", Color.blue);
+                scannerManager.StartQRScan();
+            }
+            else
+            {
+                UpdateStatus("QR scanner not available", Color.red);
+            }
+        }
+
+        private void OnQRCodeScanned(string connectionString)
+        {
+            if (connectionStringInput != null)
+            {
+                connectionStringInput.text = connectionString;
+            }
+            UpdateStatus("QR code scanned successfully!", Color.green);
+        }
+
+        private void OnNWCConnectionReady(string connectionString)
+        {
+            UpdateStatus("Auto-connecting to wallet...", Color.blue);
+            _ = ConnectToWallet();
+        }
+
+        private void OnQRScanError(string error)
+        {
+            UpdateStatus($"QR scan error: {error}", Color.red);
         }
 
         private void SetupNWCEvents()
@@ -152,6 +228,21 @@ namespace NostrWalletConnect
             catch (Exception ex)
             {
                 UpdateStatus($"Get info error: {ex.Message}", Color.red);
+            }
+        }
+
+        private async Task RequestWalletInfoEvent()
+        {
+            if (!IsConnected()) return;
+
+            try
+            {
+                UpdateStatus("Requesting wallet info event (kind 13194)...", Color.yellow);
+                await nwc.RequestWalletInfoEvent();
+            }
+            catch (Exception ex)
+            {
+                UpdateStatus($"Request info event error: {ex.Message}", Color.red);
             }
         }
 
@@ -255,6 +346,9 @@ namespace NostrWalletConnect
 
             if (getInfoButton != null)
                 getInfoButton.interactable = connected;
+
+            if (requestInfoEventButton != null)
+                requestInfoEventButton.interactable = connected;
 
             if (getBalanceButton != null)
                 getBalanceButton.interactable = connected;

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 91a2d73e51a9b4d74afc8f46223be5bc
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Permissions/Camera/Prefabs/CameraPermissionRequesterVertical.prefab
+  uploadId: 645356

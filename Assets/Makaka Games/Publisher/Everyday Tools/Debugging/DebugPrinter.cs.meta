@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 7675e239b4f154ac7b730bdccd60b3d9
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/Debugging/DebugPrinter.cs
+  uploadId: 645356

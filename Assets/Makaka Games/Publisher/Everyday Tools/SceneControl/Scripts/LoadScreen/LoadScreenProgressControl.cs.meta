@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 8710c1c533bb44b7a6bd984c8af3ad0f
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/SceneControl/Scripts/LoadScreen/LoadScreenProgressControl.cs
+  uploadId: 645356

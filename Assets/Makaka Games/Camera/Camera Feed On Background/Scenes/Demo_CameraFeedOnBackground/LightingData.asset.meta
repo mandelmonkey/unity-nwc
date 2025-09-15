@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 2b8420a6fc0f74976be5457e23731698
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 112000000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Camera/Camera Feed On Background/Scenes/Demo_CameraFeedOnBackground/LightingData.asset
+  uploadId: 645356

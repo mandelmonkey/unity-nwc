@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: bc839c0462b3d44eda22f76c085ac3e1
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/SceneControl/Scripts/LoadingAnimation/LoadingAnimationControl.cs
+  uploadId: 645356

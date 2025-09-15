@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 201cdcc2eb0f94c4e824b88a61c161cf
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/Movement/Translation/BreathControl.cs
+  uploadId: 645356

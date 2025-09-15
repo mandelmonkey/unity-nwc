@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 5b5b3ff6fbdce4cd7b93ad5746c1097e
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/SceneControl/Prefabs/LoadingAnimation/ButtonStartLoadingAnimation.prefab
+  uploadId: 645356

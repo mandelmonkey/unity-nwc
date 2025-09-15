@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 5ce1c05104dcd43b683007e2a552e941
+timeCreated: 1484172856
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Permissions/_Common/Materials/LiberationSans SDF
+    - Outline - Tutorial.mat
+  uploadId: 645356

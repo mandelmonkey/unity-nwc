@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: 34a0e1783208d488db043d894e052a2d
+timeCreated: 1526302030
+licenseType: Store
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/Debugging/NumberDebugger.cs
+  uploadId: 645356

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 79e28f7a8dbe946e0be221eeb46138d4
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/SceneControl/Prefabs/LoadScreen/Particle
+    System LoadScreen.prefab
+  uploadId: 645356

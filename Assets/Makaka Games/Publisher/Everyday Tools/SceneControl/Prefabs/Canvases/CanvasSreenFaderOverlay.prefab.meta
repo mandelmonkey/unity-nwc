@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: bab15e9ad04fe48f18f9b2ae20e827b8
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 256061
+  packageName: 'Camera Feed on Background: Not AR'
+  packageVersion: 2.0
+  assetPath: Assets/Makaka Games/Publisher/Everyday Tools/SceneControl/Prefabs/Canvases/CanvasSreenFaderOverlay.prefab
+  uploadId: 645356
