@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using Newtonsoft.Json;
 using System.Collections;
+using System.Linq;
 
 namespace NostrWalletConnect
 {
@@ -20,12 +21,15 @@ namespace NostrWalletConnect
         private string _currentSubscriptionId;
         private readonly Dictionary<string, TaskCompletionSource<NWCResponse>> _pendingRequests =
             new Dictionary<string, TaskCompletionSource<NWCResponse>>();
+        private readonly Dictionary<string, long> _requestTimestamps =
+            new Dictionary<string, long>();
         private readonly Queue<NostrEvent> _pendingNWCResponses = new Queue<NostrEvent>();
 
         public event Action OnConnected;
         public event Action OnDisconnected;
         public event Action<string> OnError;
         public event Action<NWCResponse> OnResponse;
+        public event Action<NWCResponse, string> OnResponseWithCache;
 
         public bool IsConnected => _webSocket?.IsConnected ?? false;
         public string WalletPubkey => _connection?.WalletPubkey;
@@ -95,15 +99,15 @@ namespace NostrWalletConnect
                 {
                     await SubscribeToResponses();
 
-                    // Auto-detect preferred encryption version
+                    // Get wallet info and capabilities
                     try
                     {
-                        await DetectPreferredEncryptionVersion();
+                        await GetWalletInfoAsync();
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogWarning($"Failed to detect encryption version: {ex.Message}");
-                        // Continue with default version
+                        Debug.LogWarning($"Failed to get wallet info: {ex.Message}");
+                        // Continue with default settings
                     }
                 }
 
@@ -212,14 +216,38 @@ namespace NostrWalletConnect
             }
         }
 
-        public async Task DetectPreferredEncryptionVersion()
-        {
-            DebugLogger.LogToFile("🔍 Detecting wallet's preferred encryption method...");
+        private TaskCompletionSource<bool> _walletInfoComplete;
 
-            // Analysis: wallet says "no initialization vector" for NIP-44 requests
-            // But successfully sends NIP-44 responses - it uses hybrid encryption!
-            DebugLogger.LogToFile("🔀 Wallet uses hybrid encryption: expects NIP-04 requests, sends NIP-44 responses");
-            NostrCrypto.ForceNip04Only();  // Wallet expects NIP-04 requests but sends NIP-44 responses
+        public async Task GetWalletInfoAsync()
+        {
+            DebugLogger.LogToFile("🔍 Getting wallet info and capabilities by requesting info event...");
+
+            _walletInfoComplete = new TaskCompletionSource<bool>();
+
+            try
+            {
+                // Request wallet info event to get capabilities, methods, and encryption preferences
+                await RequestWalletInfoEvent();
+
+                // Wait for the info event response to be processed
+                DebugLogger.LogToFile("📡 Info event requested - waiting for wallet response with capabilities and encryption preferences");
+
+                // Wait up to 10 seconds for wallet info to be received
+                var timeout = Task.Delay(10000);
+                var completed = await Task.WhenAny(_walletInfoComplete.Task, timeout);
+
+                if (completed == timeout)
+                {
+                    DebugLogger.LogToFile("⏰ Timeout waiting for wallet info event response");
+                    throw new TimeoutException("Timeout waiting for wallet info");
+                }
+
+                DebugLogger.LogToFile("✅ Wallet info retrieval completed successfully");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogToFile($"⚠️ Failed to get wallet info: {ex.Message}"); 
+            }
         }
 
         private async Task<NWCResponse> SendRequestAsync(NWCRequest request)
@@ -234,8 +262,15 @@ namespace NostrWalletConnect
                 var eventRequest = NWCProtocol.CreateRequestEvent(request, _connection.WalletPubkey, _connection.Secret, _clientPrivateKey);
                 var message = NWCProtocol.CreateEventMessage(eventRequest);
 
+                // Log the full JSON payload being sent to relay
+                DebugLogger.LogToFile($"📡 Sending {request.Method} request to relay:");
+                DebugLogger.LogToFile($"Event ID: {eventRequest.Id}");
+                DebugLogger.LogToFile($"Event Tags: {string.Join(", ", eventRequest.Tags?.Select(tag => $"[{string.Join(", ", tag)}]") ?? new string[0])}");
+                DebugLogger.LogToFile($"Full JSON payload: {message}");
+
                 var tcs = new TaskCompletionSource<NWCResponse>();
                 _pendingRequests[eventRequest.Id] = tcs;
+                _requestTimestamps[eventRequest.Id] = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
                 await _webSocket.SendMessageAsync(message);
 
@@ -250,6 +285,7 @@ namespace NostrWalletConnect
                 if (completedTask == timeoutTask)
                 {
                     _pendingRequests.Remove(eventRequest.Id);
+                    _requestTimestamps.Remove(eventRequest.Id);
                     throw new TimeoutException("Request timed out");
                 }
 
@@ -307,6 +343,7 @@ namespace NostrWalletConnect
                 pendingRequest.SetException(new InvalidOperationException("Connection lost"));
             }
             _pendingRequests.Clear();
+            _requestTimestamps.Clear();
         }
 
         private void HandleMessageReceived(string message)
@@ -352,11 +389,19 @@ namespace NostrWalletConnect
                                 _pendingNWCResponses.Enqueue(nostrEvent);
                             }
                         }
+                        else if (nostrEvent.Kind == NWCProtocol.INFO_EVENT_KIND)
+                        {
+                            if (debugMode)
+                            {
+                                Debug.Log("Received wallet info event (kind 13194) - processing encryption standards");
+                            }
+                            ProcessInfoEvent(nostrEvent);
+                        }
                         else
                         {
                             if (debugMode)
                             {
-                                Debug.Log($"Ignoring event with kind {nostrEvent.Kind} (expected {NWCProtocol.NWC_RESPONSE_KIND})");
+                                Debug.Log($"Ignoring event with kind {nostrEvent.Kind} (expected {NWCProtocol.NWC_RESPONSE_KIND} or {NWCProtocol.INFO_EVENT_KIND})");
                             }
                         }
                     }
@@ -401,19 +446,50 @@ namespace NostrWalletConnect
 
                 var response = NWCProtocol.ParseResponseEvent(responseEvent, _connection.Secret);
 
-                if (debugMode)
+                // Determine if this response is cached/old or fresh
+                var requestIdTag = FindTag(responseEvent.Tags, "e");
+                bool isCached = false;
+                string cacheInfo = "";
+
+                if (requestIdTag != null && _requestTimestamps.TryGetValue(requestIdTag, out var requestTime))
                 {
-                    Debug.Log($"Decrypted response: {JsonConvert.SerializeObject(response)}");
+                    var responseTime = responseEvent.CreatedAt;
+                    var timeDiff = responseTime - requestTime;
+
+                    // If response was created before our request, it's definitely cached
+                    if (timeDiff < 0)
+                    {
+                        isCached = true;
+                        cacheInfo = $"📦 CACHED (created {Math.Abs(timeDiff)}s before request)";
+                    }
+                    else if (timeDiff < 2) // Very quick response, likely fresh
+                    {
+                        cacheInfo = $"🆕 FRESH (responded in {timeDiff}s)";
+                    }
+                    else
+                    {
+                        cacheInfo = $"⏱️ DELAYED (responded after {timeDiff}s)";
+                    }
+                }
+                else
+                {
+                    // No matching request found, likely cached from previous session
+                    isCached = true;
+                    cacheInfo = "📦 CACHED (no matching request found)";
                 }
 
-                OnResponse?.Invoke(response);
+                DebugLogger.LogToFile($"🏷️ Response status: {cacheInfo}");
+                DebugLogger.LogToFile($"Response created_at: {responseEvent.CreatedAt} ({DateTimeOffset.FromUnixTimeSeconds(responseEvent.CreatedAt):yyyy-MM-dd HH:mm:ss} UTC)");
 
-                var requestIdTag = FindTag(responseEvent.Tags, "e");
                 if (debugMode)
                 {
+                    Debug.Log($"Decrypted response ({cacheInfo}): {JsonConvert.SerializeObject(response)}");
                     Debug.Log($"Looking for request ID tag 'e', found: {requestIdTag}");
                     Debug.Log($"Pending requests: {string.Join(", ", _pendingRequests.Keys)}");
                 }
+
+                OnResponse?.Invoke(response);
+                OnResponseWithCache?.Invoke(response, cacheInfo);
 
                 if (requestIdTag != null && _pendingRequests.TryGetValue(requestIdTag, out var tcs))
                 {
@@ -422,6 +498,7 @@ namespace NostrWalletConnect
                         Debug.Log($"Found matching pending request for {requestIdTag}, resolving...");
                     }
                     _pendingRequests.Remove(requestIdTag);
+                    _requestTimestamps.Remove(requestIdTag); // Clean up timestamp tracking
                     tcs.SetResult(response);
                 }
                 else
@@ -585,5 +662,97 @@ namespace NostrWalletConnect
         }
 
         #endregion
+
+        private void ProcessInfoEvent(NostrEvent infoEvent)
+        {
+            try
+            {
+                DebugLogger.LogToFile($"🔍 Processing wallet info event from {infoEvent.Pubkey}");
+                DebugLogger.LogToFile($"Info event content: {infoEvent.Content}");
+
+                // Parse supported methods from content (space-separated string)
+                string[] methods = infoEvent.Content.Split(new char[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                DebugLogger.LogToFile($"✅ Wallet supports {methods.Length} methods: {string.Join(", ", methods)}");
+
+                // Parse wallet capabilities from tags (encryption standards and notifications)
+                string encryptionStandards = null;
+                string[] notifications = null;
+
+                if (infoEvent.Tags != null)
+                {
+                    foreach (var tag in infoEvent.Tags)
+                    {
+                        if (tag != null && tag.Length >= 2)
+                        {
+                            if (tag[0] == "encryption")
+                            {
+                                encryptionStandards = tag[1];
+                                DebugLogger.LogToFile($"🔍 Found encryption tag: {encryptionStandards}");
+                            }
+                            else if (tag[0] == "notifications")
+                            {
+                                notifications = tag[1].Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                                DebugLogger.LogToFile($"🔔 Wallet notifications: {string.Join(", ", notifications)}");
+                            }
+                        }
+                    }
+                }
+
+                // Determine supported encryption methods and set preferences
+                bool supportsNip44v2 = false;
+                bool supportsNip44 = false;
+                bool supportsNip04 = false;
+
+                if (!string.IsNullOrEmpty(encryptionStandards))
+                {
+                    var encryptionLower = encryptionStandards.ToLower();
+
+                    // Check for specific versions first
+                    supportsNip44v2 = encryptionLower.Contains("nip44_v2") || encryptionLower.Contains("nip-44_v2") ||
+                                     encryptionLower.Contains("nip44v2") || encryptionLower.Contains("nip-44v2");
+
+                    // Check for generic NIP-44 (version 1)
+                    supportsNip44 = (encryptionLower.Contains("nip44") || encryptionLower.Contains("nip-44")) && !supportsNip44v2;
+
+                    // Check for NIP-04
+                    supportsNip04 = encryptionLower.Contains("nip04") || encryptionLower.Contains("nip-04");
+
+                    DebugLogger.LogToFile($"🔐 Encryption detection - NIP-44 v2: {supportsNip44v2}, NIP-44 v1: {supportsNip44}, NIP-04: {supportsNip04}");
+                }
+
+                // Configure encryption mode based on wallet capabilities
+                // Priority order: NIP-44 v2 > NIP-44 v1 > NIP-04
+                if (supportsNip44v2)
+                {
+                    DebugLogger.LogToFile("🔐 Wallet supports NIP-44 v2 - using NIP-44 v2 (highest priority)");
+                    NostrCrypto.SetPreferredNip44Version(2);
+                }
+                else if (supportsNip44)
+                {
+                    DebugLogger.LogToFile("🔐 Wallet supports NIP-44 v1 - using NIP-44 v1");
+                    NostrCrypto.SetPreferredNip44Version(1);
+                }
+                else if (supportsNip04)
+                {
+                    DebugLogger.LogToFile("🔐 Wallet supports NIP-04 only - using NIP-04 (fallback)");
+                    NostrCrypto.ForceNip04Only();
+                }
+                else
+                {
+                    DebugLogger.LogToFile("⚠️ No encryption standards found in info event - using hybrid mode"); 
+                }
+
+                // Signal that wallet info retrieval is complete
+                _walletInfoComplete?.TrySetResult(true);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogErrorToFile($"❌ Error processing info event: {ex.Message}");
+                DebugLogger.LogToFile("🔀 Falling back to hybrid encryption mode"); 
+
+                // Signal completion even on error
+                _walletInfoComplete?.TrySetResult(false);
+            }
+        }
     }
 }

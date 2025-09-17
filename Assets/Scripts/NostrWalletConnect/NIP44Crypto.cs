@@ -100,55 +100,58 @@ namespace NostrWalletConnect
                 var privateKeyBytes = NostrCrypto.HexToBytes(privateKeyHex);
                 var publicKeyBytes = NostrCrypto.HexToBytes(publicKeyHex);
 
-                var privKey = ECPrivKey.Create(privateKeyBytes);
-
-                // Create full pubkey from x-only - try both even and odd y-coordinates
+                // Handle different public key formats
                 ECPubKey pubKey = null;
-                try
+                if (publicKeyBytes.Length == 33)
                 {
-                    var fullPubkeyBytes = new byte[33];
-                    fullPubkeyBytes[0] = 0x02; // Try even y-coordinate first
-                    Array.Copy(publicKeyBytes, 0, fullPubkeyBytes, 1, 32);
-                    pubKey = ECPubKey.Create(fullPubkeyBytes);
-                    Debug.Log("Using even y-coordinate (0x02 prefix)");
+                    // Already has prefix (compressed format)
+                    pubKey = ECPubKey.Create(publicKeyBytes);
                 }
-                catch
+                else if (publicKeyBytes.Length == 32)
                 {
+                    // X-only public key - need to add prefix
+                    // Following nostr-tools approach: try with 0x02 prefix first
+                    var fullPubkeyBytes = new byte[33];
+                    fullPubkeyBytes[0] = 0x02; // Even y-coordinate
+                    Array.Copy(publicKeyBytes, 0, fullPubkeyBytes, 1, 32);
+
                     try
                     {
-                        var fullPubkeyBytes = new byte[33];
-                        fullPubkeyBytes[0] = 0x03; // Try odd y-coordinate
-                        Array.Copy(publicKeyBytes, 0, fullPubkeyBytes, 1, 32);
+                        pubKey = ECPubKey.Create(fullPubkeyBytes);
+                        Debug.Log("Using even y-coordinate (0x02 prefix)");
+                    }
+                    catch
+                    {
+                        // Try with odd y-coordinate if even fails
+                        fullPubkeyBytes[0] = 0x03;
                         pubKey = ECPubKey.Create(fullPubkeyBytes);
                         Debug.Log("Using odd y-coordinate (0x03 prefix)");
                     }
-                    catch (Exception innerEx)
-                    {
-                        Debug.LogError($"Failed to create pubkey with both even and odd y-coordinates: {innerEx.Message}");
-                        throw;
-                    }
+                }
+                else
+                {
+                    throw new ArgumentException($"Invalid public key length: {publicKeyBytes.Length}");
                 }
 
-                // Compute ECDH shared secret - following Go's secp256k1.GenerateSharedSecret approach
-                // This should match Go's implementation more closely
+                var privKey = ECPrivKey.Create(privateKeyBytes);
+
+                // Compute ECDH shared secret and extract X coordinate
+                // This matches the nostr-tools approach: getSharedSecret(privA, '02' + pubB).subarray(1, 33)
                 var sharedPoint = pubKey.GetSharedPubkey(privKey);
+                var sharedBytes = sharedPoint.ToBytes(); // This gives us the full compressed point
 
-                // The Go implementation likely uses the raw shared point bytes
-                // Let's try different formats to match what Go's GenerateSharedSecret returns
-                byte[] shared = null;
+                // Extract X coordinate (skip the prefix byte, take next 32 bytes)
+                var sharedX = new byte[32];
+                Array.Copy(sharedBytes, 1, sharedX, 0, 32);
+                Debug.Log($"Shared X coordinate ({sharedX.Length} bytes): {BitConverter.ToString(sharedX).Replace("-", "").Substring(0, 16)}...");
 
-                // Standard ECDH returns just the X coordinate of the shared point (32 bytes)
-                // This is what Go's secp256k1.GenerateSharedSecret typically returns
-                var xOnlyPubKey = sharedPoint.ToXOnlyPubKey();
-                shared = xOnlyPubKey.ToBytes(); // 32 bytes - this is standard ECDH
-                Debug.Log($"Using X-only shared secret ({shared.Length} bytes): {BitConverter.ToString(shared).Replace("-", "").Substring(0, 16)}...");
-
-                // NIP-44: Use HKDF-Extract with "nip44-v2" salt to create conversation key
+                // NIP-44: Use HKDF-Extract with "nip44-v2" salt
+                // Following RFC 5869 HKDF-Extract: HMAC-Hash(salt, IKM)
                 var salt = Encoding.UTF8.GetBytes("nip44-v2");
                 byte[] conversationKey;
                 using (var hmac = new HMACSHA256Crypto(salt))
                 {
-                    conversationKey = hmac.ComputeHash(shared);
+                    conversationKey = hmac.ComputeHash(sharedX);
                 }
 
                 Debug.Log($"Computed conversation key: {BitConverter.ToString(conversationKey).Replace("-", "").Substring(0, 16)}...");
@@ -163,7 +166,7 @@ namespace NostrWalletConnect
 
         private static (byte[] enc, byte[] nonce, byte[] auth) DeriveMessageKeys(byte[] conversationKey, byte[] salt)
         {
-            // NIP-44: Use HKDF-Expand to derive enc (32b), nonce (12b), auth (32b)
+            // NIP-44: Use HKDF-Expand with salt as info parameter
             if (conversationKey.Length != 32)
                 throw new ArgumentException("Conversation key must be 32 bytes");
             if (salt.Length != 32)
@@ -173,6 +176,7 @@ namespace NostrWalletConnect
             DebugLogger.LogHexData("Conversation key", conversationKey);
             DebugLogger.LogHexData("Salt for key derivation", salt);
 
+            // Use salt as the info parameter for HKDF-Expand
             var keyMaterial = HkdfExpand(conversationKey, salt, 32 + 12 + 32); // 76 bytes total
             DebugLogger.LogHexData("HKDF key material", keyMaterial, keyMaterial.Length);
 
@@ -717,21 +721,55 @@ namespace NostrWalletConnect
             if (messageLength < 1 || messageLength > 0xFFFF)
                 throw new ArgumentException("Message length out of range");
 
-            // NIP-44 standard padding: round up to next multiple of 32 bytes
-            // Minimum total size is 32 bytes
-            var totalUnpaddedLength = 2 + messageLength; // 2 bytes for length + message
-            var paddedLength = ((totalUnpaddedLength + 31) / 32) * 32; // Round up to multiple of 32
+            // NIP-44 official padding: uses powers-of-two algorithm
+            // calcPaddedLen should take the message length only (not including 2-byte prefix)
+            var paddedLength = CalcPaddedLen(messageLength);
+            var totalPaddedLength = 2 + paddedLength; // 2-byte length prefix + padded message
 
-            DebugLogger.LogToFile($"📦 Padding: message={messageLength}B, unpadded={totalUnpaddedLength}B, padded={paddedLength}B");
+            DebugLogger.LogToFile($"📦 Padding: message={messageLength}B, paddedMessage={paddedLength}B, totalPadded={totalPaddedLength}B");
 
             // Create padded message: [length:2][message][zero padding...]
-            var padded = new byte[paddedLength];
+            var padded = new byte[totalPaddedLength];
             padded[0] = (byte)(messageLength >> 8);    // length high byte
             padded[1] = (byte)(messageLength & 0xFF);  // length low byte
             Array.Copy(messageBytes, 0, padded, 2, messageLength);
-            // Remaining bytes are already zero-initialized
+            // Remaining bytes (from messageLength+2 to totalPaddedLength) are already zero-initialized
 
             return padded;
+        }
+
+        /// <summary>
+        /// Official NIP-44 calc_padded_len algorithm using powers-of-two
+        /// Based on: https://github.com/nbd-wtf/nostr-tools/blob/master/nip44.ts
+        /// </summary>
+        private static int CalcPaddedLen(int unpaddedLen)
+        {
+            // Input validation (matching the working TypeScript implementation)
+            if (unpaddedLen < 1)
+            {
+                throw new ArgumentException("Expected positive integer for padded length calculation");
+            }
+
+            if (unpaddedLen <= 32)
+            {
+                return 32; // Minimum padded message size
+            }
+
+            // Calculate next power of 2 greater than (unpaddedLen - 1)
+            // Using Math.Log(x) / Math.Log(2) since Math.Log2 is not available in Unity's .NET version
+            var nextPower = 1 << (int)(Math.Floor(Math.Log(unpaddedLen - 1) / Math.Log(2)) + 1);
+
+            int chunk;
+            if (nextPower <= 256)
+            {
+                chunk = 32;
+            }
+            else
+            {
+                chunk = nextPower / 8;
+            }
+
+            return chunk * (int)(Math.Floor((double)(unpaddedLen - 1) / chunk) + 1);
         }
     }
 }

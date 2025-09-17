@@ -59,6 +59,71 @@ namespace NostrWalletConnect
             _useNip04Only = true;
             DebugLogger.LogToFile($"🔧 Forcing NIP-04 only mode - wallet doesn't support NIP-44");
         }
+ 
+        public static string GetCurrentEncryptionTag()
+        {
+            if (_useNip04Only)
+            {
+                return "nip04";
+            }
+            else if (_preferredNip44Version.HasValue)
+            {
+                return _preferredNip44Version.Value == 2 ? "nip44_v2" : "nip44";
+            }
+            else
+            {
+                // Hybrid mode - default to nip44_v2 for outgoing
+                return "nip44_v2";
+            }
+        }
+
+        /// <summary>
+        /// Encrypts a message using the detected encryption standard from wallet info
+        /// </summary>
+        public static string EncryptForWallet(string message, string recipientPubkey, string senderPrivateKey)
+        {
+            if (_useNip04Only)
+            {
+                DebugLogger.LogToFile("🔐 Using NIP-04 encryption (wallet preference)");
+                return EncryptNIP04Pure(message, recipientPubkey, senderPrivateKey);
+            }
+            else if (_preferredNip44Version != null)
+            {
+                DebugLogger.LogToFile($"🔐 Using NIP-44 v{_preferredNip44Version} encryption (wallet preference)");
+                return NIP44Crypto.EncryptNIP44(message, recipientPubkey, senderPrivateKey, _preferredNip44Version.Value);
+            }
+            else
+            {
+                // Hybrid mode - try NIP-44 first, fallback to NIP-04
+                DebugLogger.LogToFile("🔐 Using hybrid mode - trying NIP-44 first, fallback to NIP-04");
+                return EncryptNIP04(message, recipientPubkey, senderPrivateKey); // Keep existing fallback logic
+            }
+        }
+
+        /// <summary>
+        /// Decrypts a message using auto-detection or the known encryption standard
+        /// </summary>
+        public static string DecryptFromWallet(string encryptedMessage, string senderPubkey, string recipientPrivateKey)
+        {
+            return DecryptNIP04(encryptedMessage, senderPubkey, recipientPrivateKey); // Keep existing auto-detection logic
+        }
+
+        /// <summary>
+        /// Pure NIP-04 encryption without fallbacks
+        /// </summary>
+        public static string EncryptNIP04Pure(string message, string recipientPubkey, string senderPrivateKey)
+        {
+            DebugLogger.LogToFile("💡 Using pure NIP-04 encryption...");
+            var sharedSecret = ComputeSharedSecret(recipientPubkey, senderPrivateKey);
+            var iv = GenerateIV();
+            DebugLogger.LogHexData("NIP-04 shared secret", sharedSecret);
+            DebugLogger.LogHexData("NIP-04 IV", iv);
+            var encrypted = AESEncrypt(message, sharedSecret, iv);
+            DebugLogger.LogHexData("NIP-04 encrypted data", encrypted);
+            var combined = Convert.ToBase64String(encrypted) + "?iv=" + Convert.ToBase64String(iv);
+            DebugLogger.LogToFile($"✅ NIP-04 encryption complete: {combined.Substring(0, Math.Min(100, combined.Length))}...");
+            return combined;
+        }
 
         public static string EncryptNIP04(string message, string recipientPubkey, string senderPrivateKey)
         {

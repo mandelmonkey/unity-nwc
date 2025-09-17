@@ -156,17 +156,24 @@ namespace NostrWalletConnect
                     UpdateStatus($"Error: {error}", Color.red);
                 };
 
-                nwc.OnResponse += (response) =>
+                // Use the new event that includes cache information
+                nwc.OnResponseWithCache += (response, cacheInfo) =>
                 {
                     if (response.Error != null)
                     {
-                        DisplayResponse($"Error: {response.Error.Code} - {response.Error.Message}");
+                        DisplayResponse($"[{cacheInfo}] Error: {response.Error.Code} - {response.Error.Message}");
                     }
                     else
                     {
-                        DisplayResponse($"Success: {JsonConvert.SerializeObject(response.Result, Formatting.Indented)}");
+                        DisplayResponse($"[{cacheInfo}] Success: {JsonConvert.SerializeObject(response.Result, Formatting.Indented)}");
                     }
-                    
+                };
+
+                // Keep the old event for backwards compatibility (but OnResponseWithCache takes precedence)
+                nwc.OnResponse += (response) =>
+                {
+                    // Only log without cache info if needed for debugging
+                    Debug.Log($"Response received (legacy event): {response.ResultType}");
                 };
             }
         }

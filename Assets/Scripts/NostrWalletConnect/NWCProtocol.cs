@@ -185,10 +185,42 @@ namespace NostrWalletConnect
         public string[] Methods { get; set; }
     }
 
+    [Serializable]
+    public class WalletInfoData
+    {
+        [JsonProperty("alias")]
+        public string Alias { get; set; }
+
+        [JsonProperty("color")]
+        public string Color { get; set; }
+
+        [JsonProperty("pubkey")]
+        public string Pubkey { get; set; }
+
+        [JsonProperty("network")]
+        public string Network { get; set; }
+
+        [JsonProperty("block_height")]
+        public long BlockHeight { get; set; }
+
+        [JsonProperty("block_hash")]
+        public string BlockHash { get; set; }
+
+        [JsonProperty("methods")]
+        public string[] Methods { get; set; }
+
+        [JsonProperty("notifications")]
+        public string[] Notifications { get; set; }
+
+        [JsonProperty("encryption")]
+        public string Encryption { get; set; }
+    }
+
     public static class NWCProtocol
     {
         public const int NWC_REQUEST_KIND = 23194;
         public const int NWC_RESPONSE_KIND = 23195;
+        public const int INFO_EVENT_KIND = 13194;
 
         public static class Methods
         {
@@ -219,7 +251,10 @@ namespace NostrWalletConnect
         {
             var clientPubkey = NostrCrypto.GetPublicKey(connectionSecret);
             var content = JsonConvert.SerializeObject(request);
-            var encryptedContent = NostrCrypto.EncryptNIP04(content, walletPubkey, connectionSecret);
+            var encryptedContent = NostrCrypto.EncryptForWallet(content, walletPubkey, connectionSecret);
+
+            // Get the current encryption method to tag the request
+            var encryptionTag = NostrCrypto.GetCurrentEncryptionTag();
 
             var nostrEvent = new NostrEvent
             {
@@ -228,7 +263,8 @@ namespace NostrWalletConnect
                 Kind = NWC_REQUEST_KIND,
                 Tags = new string[][]
                 {
-                    new string[] { "p", walletPubkey }
+                    new string[] { "p", walletPubkey },
+                    new string[] { "encryption", encryptionTag }
                 },
                 Content = encryptedContent
             };
@@ -244,7 +280,7 @@ namespace NostrWalletConnect
         {
             try
             {
-                var decryptedContent = NostrCrypto.DecryptNIP04(responseEvent.Content, responseEvent.Pubkey, clientPrivateKey);
+                var decryptedContent = NostrCrypto.DecryptFromWallet(responseEvent.Content, responseEvent.Pubkey, clientPrivateKey);
                 return JsonConvert.DeserializeObject<NWCResponse>(decryptedContent);
             }
             catch (Exception ex)
