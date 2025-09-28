@@ -38,7 +38,7 @@ namespace NostrWalletConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Error generating public key: {ex.Message}");
+                DebugLogger.LogErrorToFile($"Error generating public key: {ex.Message}");
                 throw;
             }
         }
@@ -133,7 +133,7 @@ namespace NostrWalletConnect
                 if (_useNip04Only)
                 {
                     DebugLogger.LogToFile("💡 Using NIP-04 only (wallet doesn't support NIP-44)...");
-                    Debug.Log("Using NIP-04 (legacy) encryption for outgoing message...");
+                    DebugLogger.LogToFile("Using NIP-04 (legacy) encryption for outgoing message...");
                     var nip04SharedSecret = ComputeSharedSecret(recipientPubkey, senderPrivateKey);
                     var nip04Iv = GenerateIV();
                     DebugLogger.LogHexData("NIP-04 shared secret", nip04SharedSecret);
@@ -169,7 +169,7 @@ namespace NostrWalletConnect
                 try
                 {
                     DebugLogger.LogToFile($"💡 Trying NIP-44 encryption for outgoing message (preferred version: {_preferredNip44Version ?? 1})...");
-                    Debug.Log("Using NIP-44 encryption for outgoing message...");
+                    DebugLogger.LogToFile("Using NIP-44 encryption for outgoing message...");
                     var result = NIP44Crypto.EncryptNIP44(message, recipientPubkey, senderPrivateKey, _preferredNip44Version ?? 1);
                     DebugLogger.LogToFile($"✅ NIP-44 encryption succeeded, returning result");
                     return result;
@@ -178,12 +178,12 @@ namespace NostrWalletConnect
                 {
                     DebugLogger.LogErrorToFile($"❌ NIP-44 encryption failed: {nip44Ex.Message}");
                     DebugLogger.LogErrorToFile($"Stack trace: {nip44Ex.StackTrace}");
-                    Debug.LogWarning($"NIP-44 encryption failed: {nip44Ex.Message}, falling back to NIP-04...");
+                    DebugLogger.LogWarningToFile($"NIP-44 encryption failed: {nip44Ex.Message}, falling back to NIP-04...");
                 }
 
                 // Fall back to NIP-04 (legacy)
                 DebugLogger.LogToFile("⚠️ Falling back to NIP-04 (legacy) encryption...");
-                Debug.Log("Using NIP-04 (legacy) encryption for outgoing message...");
+                DebugLogger.LogToFile("Using NIP-04 (legacy) encryption for outgoing message...");
                 var sharedSecret = ComputeSharedSecret(recipientPubkey, senderPrivateKey);
                 var iv = GenerateIV();
                 var encrypted = AESEncrypt(message, sharedSecret, iv);
@@ -192,7 +192,7 @@ namespace NostrWalletConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Encryption error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"Encryption error: {ex.Message}");
                 throw;
             }
         }
@@ -237,28 +237,28 @@ namespace NostrWalletConnect
                 // Fall back to NIP-04 (legacy encryption)
                 DebugLogger.LogToFile("Attempting NIP-04 (legacy) decryption...");
                 var sharedSecret = ComputeSharedSecret(senderPubkey, recipientPrivateKey);
-                Debug.Log($"Computed shared secret: {BitConverter.ToString(sharedSecret).Replace("-", "").ToLower().Substring(0, 16)}...");
+                DebugLogger.LogToFile($"Computed shared secret: {BitConverter.ToString(sharedSecret).Replace("-", "").ToLower().Substring(0, 16)}...");
 
                 // Try standard format first: "encrypted?iv=base64iv"
                 var parts = encryptedMessage.Split(new[] { "?iv=" }, StringSplitOptions.None);
                 if (parts.Length == 2)
                 {
-                    Debug.Log("Found standard NIP-04 format with ?iv= separator");
+                    DebugLogger.LogToFile("Found standard NIP-04 format with ?iv= separator");
                     var encrypted = Convert.FromBase64String(parts[0]);
                     var iv = Convert.FromBase64String(parts[1]);
                     return AESDecrypt(encrypted, sharedSecret, iv);
                 }
 
                 // Try alternative format: IV might be embedded in the base64 data
-                Debug.LogWarning("Standard NIP-04 format not detected, trying alternative decryption methods...");
+                DebugLogger.LogWarningToFile("Standard NIP-04 format not detected, trying alternative decryption methods...");
 
                 var encryptedBytes = Convert.FromBase64String(encryptedMessage);
-                Debug.Log($"Decoded base64 data length: {encryptedBytes.Length} bytes");
+                DebugLogger.LogToFile($"Decoded base64 data length: {encryptedBytes.Length} bytes");
 
                 // Method 1: First 16 bytes are IV, rest is encrypted data
                 if (encryptedBytes.Length > 16)
                 {
-                    Debug.Log("Trying Method 1: IV prefix");
+                    DebugLogger.LogToFile("Trying Method 1: IV prefix");
                     var iv1 = new byte[16];
                     var encrypted1 = new byte[encryptedBytes.Length - 16];
                     Array.Copy(encryptedBytes, 0, iv1, 0, 16);
@@ -267,19 +267,19 @@ namespace NostrWalletConnect
                     try
                     {
                         var result = AESDecrypt(encrypted1, sharedSecret, iv1);
-                        Debug.Log("Method 1 succeeded!");
+                        DebugLogger.LogToFile("Method 1 succeeded!");
                         return result;
                     }
                     catch (Exception ex1)
                     {
-                        Debug.LogWarning($"Method 1 (IV prefix) failed: {ex1.Message}");
+                        DebugLogger.LogWarningToFile($"Method 1 (IV prefix) failed: {ex1.Message}");
                     }
                 }
 
                 // Method 2: Last 16 bytes are IV, rest is encrypted data
                 if (encryptedBytes.Length > 16)
                 {
-                    Debug.Log("Trying Method 2: IV suffix");
+                    DebugLogger.LogToFile("Trying Method 2: IV suffix");
                     var encrypted2 = new byte[encryptedBytes.Length - 16];
                     var iv2 = new byte[16];
                     Array.Copy(encryptedBytes, 0, encrypted2, 0, encrypted2.Length);
@@ -288,31 +288,31 @@ namespace NostrWalletConnect
                     try
                     {
                         var result = AESDecrypt(encrypted2, sharedSecret, iv2);
-                        Debug.Log("Method 2 succeeded!");
+                        DebugLogger.LogToFile("Method 2 succeeded!");
                         return result;
                     }
                     catch (Exception ex2)
                     {
-                        Debug.LogWarning($"Method 2 (IV suffix) failed: {ex2.Message}");
+                        DebugLogger.LogWarningToFile($"Method 2 (IV suffix) failed: {ex2.Message}");
                     }
                 }
 
                 // Method 3: Try with zero IV (some implementations might not use random IV)
-                Debug.Log("Trying Method 3: Zero IV");
+                DebugLogger.LogToFile("Trying Method 3: Zero IV");
                 try
                 {
                     var zeroIV = new byte[16];
                     var result = AESDecrypt(encryptedBytes, sharedSecret, zeroIV);
-                    Debug.Log("Method 3 succeeded!");
+                    DebugLogger.LogToFile("Method 3 succeeded!");
                     return result;
                 }
                 catch (Exception ex3)
                 {
-                    Debug.LogWarning($"Method 3 (zero IV) failed: {ex3.Message}");
+                    DebugLogger.LogWarningToFile($"Method 3 (zero IV) failed: {ex3.Message}");
                 }
 
                 // Method 4: Try raw decryption with shared secret as key directly
-                Debug.Log("Trying Method 4: Direct decryption without IV");
+                DebugLogger.LogToFile("Trying Method 4: Direct decryption without IV");
                 try
                 {
                     using (var aes = Aes.Create())
@@ -325,22 +325,22 @@ namespace NostrWalletConnect
                         {
                             var decrypted = decryptor.TransformFinalBlock(encryptedBytes, 0, encryptedBytes.Length);
                             var result = Encoding.UTF8.GetString(decrypted);
-                            Debug.Log("Method 4 succeeded!");
+                            DebugLogger.LogToFile("Method 4 succeeded!");
                             return result;
                         }
                     }
                 }
                 catch (Exception ex4)
                 {
-                    Debug.LogWarning($"Method 4 (ECB mode) failed: {ex4.Message}");
+                    DebugLogger.LogWarningToFile($"Method 4 (ECB mode) failed: {ex4.Message}");
                 }
 
-                Debug.LogError("All decryption methods failed");
+                DebugLogger.LogErrorToFile("All decryption methods failed");
                 throw new ArgumentException("Could not decrypt message with any known NIP-04 format");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"NIP-04 decryption error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"NIP-04 decryption error: {ex.Message}");
                 throw;
             }
         }
@@ -456,12 +456,12 @@ namespace NostrWalletConnect
                     var sharedPoint = pubKey.GetSharedPubkey(privKey);
                     var xCoord = sharedPoint.ToXOnlyPubKey().ToBytes();
 
-                    Debug.Log($"Alternative: Direct X-coordinate as shared secret: {BitConverter.ToString(xCoord).Replace("-", "").Substring(0, 16)}...");
+                    DebugLogger.LogToFile($"Alternative: Direct X-coordinate as shared secret: {BitConverter.ToString(xCoord).Replace("-", "").Substring(0, 16)}...");
                     return xCoord; // Return unhashed
                 }
                 catch (Exception ex2)
                 {
-                    Debug.LogError($"Alternative ECDH also failed: {ex2.Message}, falling back to simple method");
+                    DebugLogger.LogErrorToFile($"Alternative ECDH also failed: {ex2.Message}, falling back to simple method");
 
                     // Fallback to simple hash-based approach
                     var pubkeyBytes = HexToBytes(pubkey);
@@ -473,7 +473,7 @@ namespace NostrWalletConnect
                         Array.Copy(pubkeyBytes, 0, combined, 0, pubkeyBytes.Length);
                         Array.Copy(privateKeyBytes, 0, combined, pubkeyBytes.Length, privateKeyBytes.Length);
                         var fallbackSecret = sha256.ComputeHash(combined);
-                        Debug.Log($"Fallback shared secret: {BitConverter.ToString(fallbackSecret).Replace("-", "").Substring(0, 16)}...");
+                        DebugLogger.LogToFile($"Fallback shared secret: {BitConverter.ToString(fallbackSecret).Replace("-", "").Substring(0, 16)}...");
                         return fallbackSecret;
                     }
                 }
@@ -567,7 +567,7 @@ namespace NostrWalletConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Event signing error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"Event signing error: {ex.Message}");
                 throw;
             }
         }
@@ -604,7 +604,7 @@ namespace NostrWalletConnect
                     var version = decoded[0];
                     if (version == 2) // NIP-44 v2
                     {
-                        Debug.Log($"Detected NIP-44 v{version} format (payload length: {decoded.Length})");
+                        DebugLogger.LogToFile($"Detected NIP-44 v{version} format (payload length: {decoded.Length})");
                         return "NIP-44";
                     }
                 }
@@ -612,24 +612,24 @@ namespace NostrWalletConnect
                 // NIP-04 detection: Look for "?iv=" pattern or try base64 decode
                 if (encryptedMessage.Contains("?iv="))
                 {
-                    Debug.Log("Detected NIP-04 format (contains ?iv= separator)");
+                    DebugLogger.LogToFile("Detected NIP-04 format (contains ?iv= separator)");
                     return "NIP-04";
                 }
 
                 // If it's short base64 without version byte, likely NIP-04
                 if (decoded.Length < 66)
                 {
-                    Debug.Log($"Detected likely NIP-04 format (short payload length: {decoded.Length})");
+                    DebugLogger.LogToFile($"Detected likely NIP-04 format (short payload length: {decoded.Length})");
                     return "NIP-04";
                 }
 
-                Debug.Log("Format unclear, defaulting to NIP-04");
+                DebugLogger.LogToFile("Format unclear, defaulting to NIP-04");
                 return "NIP-04";
             }
             catch
             {
                 // If base64 decode fails, probably NIP-04 with ?iv= format
-                Debug.Log("Base64 decode failed, assuming NIP-04");
+                DebugLogger.LogToFile("Base64 decode failed, assuming NIP-04");
                 return "NIP-04";
             }
         }
@@ -669,7 +669,7 @@ namespace NostrWalletConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Signature verification error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"Signature verification error: {ex.Message}");
                 return false;
             }
         }

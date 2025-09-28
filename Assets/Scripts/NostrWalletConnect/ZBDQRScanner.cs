@@ -12,8 +12,7 @@ namespace NostrWalletConnect
         [Header("UI References")]
         [SerializeField] private RawImage cameraDisplay;
         [SerializeField] private RectTransform rectTransform;
-        [SerializeField] private Button startScanButton;
-        [SerializeField] private Button stopScanButton;
+        [SerializeField] private Button startScanButton; 
         [SerializeField] private Button closeButton;
         [SerializeField] private Text statusText;
         [SerializeField] private GameObject scannerPanel;
@@ -109,9 +108,7 @@ namespace NostrWalletConnect
         {
             if (startScanButton != null)
                 startScanButton.onClick.AddListener(StartScanning);
-
-            if (stopScanButton != null)
-                stopScanButton.onClick.AddListener(StopScanning);
+ 
 
             if (closeButton != null)
                 closeButton.onClick.AddListener(CloseScanner);
@@ -120,7 +117,7 @@ namespace NostrWalletConnect
             if (scannerPanel != null)
                 scannerPanel.SetActive(false);
             
-            scannerPanel.SetActive(true);
+           
         }
 
         private void InitializeCameras()
@@ -224,6 +221,7 @@ namespace NostrWalletConnect
 
         public void StartScanning()
         {
+            scannerPanel.SetActive(true);
             if (isScanning) return;
 
             try
@@ -469,9 +467,7 @@ namespace NostrWalletConnect
         {
             if (startScanButton != null)
                 startScanButton.interactable = !scanning;
-
-            if (stopScanButton != null)
-                stopScanButton.interactable = scanning;
+ 
         }
 
         private void OnDestroy()

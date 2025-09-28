@@ -10,6 +10,8 @@ namespace NostrWalletConnect
         private static string logFilePath;
         private static bool isInitialized = false;
         private static readonly object lockObject = new object();
+        private static bool debugEnabled = true;
+        private static bool logToFileEnabled = true;
 
         public static void Initialize()
         {
@@ -71,31 +73,47 @@ namespace NostrWalletConnect
             }
         }
 
-        public static void LogToFile(string message)
+        public static void SetDebugEnabled(bool enabled)
         {
-            if (!isInitialized)
-            {
-                Initialize();
-            }
+            debugEnabled = enabled;
+        }
+
+        public static void SetFileLoggingEnabled(bool enabled)
+        {
+            logToFileEnabled = enabled;
+        }
+
+        public static void Log(string message)
+        {
+            if (!debugEnabled) return;
 
             try
             {
-                var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-                var threadId = Thread.CurrentThread.ManagedThreadId;
-                var logEntry = $"[{timestamp}][T{threadId}] {message}";
-
                 // Only call Unity Debug.Log from main thread to avoid threading issues
                 if (Thread.CurrentThread.ManagedThreadId == 1)
                 {
                     Debug.Log(message);
                 }
 
-                // Write to file - this is thread-safe
-                lock (lockObject)
+                // Write to file if enabled
+                if (logToFileEnabled)
                 {
-                    if (!string.IsNullOrEmpty(logFilePath))
+                    if (!isInitialized)
                     {
-                        File.AppendAllText(logFilePath, logEntry + Environment.NewLine);
+                        Initialize();
+                    }
+
+                    var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+                    var threadId = Thread.CurrentThread.ManagedThreadId;
+                    var logEntry = $"[{timestamp}][T{threadId}] {message}";
+
+                    // Write to file - this is thread-safe
+                    lock (lockObject)
+                    {
+                        if (!string.IsNullOrEmpty(logFilePath))
+                        {
+                            File.AppendAllText(logFilePath, logEntry + Environment.NewLine);
+                        }
                     }
                 }
             }
@@ -109,15 +127,20 @@ namespace NostrWalletConnect
             }
         }
 
-        public static void LogErrorToFile(string message)
+        public static void LogError(string message)
         {
-            LogToFile($"ERROR: {message}");
+            Log($"ERROR: {message}");
         }
 
-        public static void LogWarningToFile(string message)
+        public static void LogWarning(string message)
         {
-            LogToFile($"WARNING: {message}");
+            Log($"WARNING: {message}");
         }
+
+        // Legacy methods for backwards compatibility (deprecated)
+        public static void LogToFile(string message) => Log(message);
+        public static void LogErrorToFile(string message) => LogError(message);
+        public static void LogWarningToFile(string message) => LogWarning(message);
 
         public static string GetLogFilePath()
         {

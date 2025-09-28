@@ -13,6 +13,8 @@ namespace NostrWalletConnect
         [SerializeField] private string connectionString;
         [SerializeField] private bool autoConnect = true;
         [SerializeField] private bool debugMode = true;
+        [SerializeField] private bool logToFile = true;
+        [SerializeField] private bool throwOnNWCErrors = false;
 
         private NWCConnectionString _connection;
         private NostrWebSocket _webSocket;
@@ -34,6 +36,7 @@ namespace NostrWalletConnect
         public bool IsConnected => _webSocket?.IsConnected ?? false;
         public string WalletPubkey => _connection?.WalletPubkey;
         public string ClientPubkey => _clientPublicKey;
+        public static NostrWalletConnect _instance;
 
         private void Awake()
         {
@@ -46,13 +49,22 @@ namespace NostrWalletConnect
             _clientPrivateKey = NostrCrypto.GeneratePrivateKey();
             _clientPublicKey = NostrCrypto.GetPublicKey(_clientPrivateKey);
 
+            // Set DebugLogger debug state to match our debug mode
+            DebugLogger.SetDebugEnabled(debugMode);
+            DebugLogger.SetFileLoggingEnabled(logToFile);
+
+            if (_instance ==null)
+            {
+                _instance = this;
+            }
+
             if (debugMode)
             {
                 Debug.Log($"Client Private Key: {_clientPrivateKey}");
                 Debug.Log($"Client Public Key: {_clientPublicKey}");
             }
         }
-
+ 
         private void Start()
         {
             if (autoConnect && !string.IsNullOrEmpty(connectionString))
@@ -94,24 +106,60 @@ namespace NostrWalletConnect
                     Debug.Log($"Relay: {_connection.RelayUrl}");
                 }
 
-                var connected = await _webSocket.ConnectAsync(_connection.RelayUrl);
-                if (connected)
+                // First connect to the relay WebSocket
+                var relayConnected = await _webSocket.ConnectAsync(_connection.RelayUrl);
+                if (!relayConnected)
                 {
-                    await SubscribeToResponses();
-
-                    // Get wallet info and capabilities
-                    try
-                    {
-                        await GetWalletInfoAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.LogWarning($"Failed to get wallet info: {ex.Message}");
-                        // Continue with default settings
-                    }
+                    Debug.LogError("Failed to connect to relay");
+                    OnError?.Invoke("Failed to connect to relay");
+                    return false;
                 }
 
-                return connected;
+                if (debugMode)
+                {
+                    Debug.Log("Connected to relay, subscribing to responses...");
+                }
+
+                await SubscribeToResponses();
+
+                // Now verify NWC connection by requesting wallet info event
+                try
+                {
+                    if (debugMode)
+                    {
+                        Debug.Log("Verifying NWC connection - requesting wallet info event...");
+                    }
+
+                    // Request wallet info event - this is the real test of NWC connection
+                    await GetWalletInfoAsync(5000); // 5 second timeout
+
+                    if (debugMode)
+                    {
+                        Debug.Log("✅ NWC connection successful - wallet responded with info event");
+                    }
+
+                    // Only fire OnConnected after successful wallet info response
+                    OnConnected?.Invoke();
+                    return true;
+                }
+                catch (TimeoutException)
+                {
+                    Debug.LogError("NWC connection failed - wallet did not respond to info event request");
+                    OnError?.Invoke("Wallet did not respond to connection request (timeout)");
+
+                    // Disconnect from relay since NWC connection failed
+                    await DisconnectAsync();
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"NWC connection failed: {ex.Message}");
+                    OnError?.Invoke($"Wallet communication failed: {ex.Message}");
+
+                    // Disconnect from relay since NWC connection failed
+                    await DisconnectAsync();
+                    return false;
+                }
             }
             catch (Exception ex)
             {
@@ -218,7 +266,7 @@ namespace NostrWalletConnect
 
         private TaskCompletionSource<bool> _walletInfoComplete;
 
-        public async Task GetWalletInfoAsync()
+        public async Task GetWalletInfoAsync(int timeoutMs = 5000)
         {
             DebugLogger.LogToFile("🔍 Getting wallet info and capabilities by requesting info event...");
 
@@ -230,10 +278,10 @@ namespace NostrWalletConnect
                 await RequestWalletInfoEvent();
 
                 // Wait for the info event response to be processed
-                DebugLogger.LogToFile("📡 Info event requested - waiting for wallet response with capabilities and encryption preferences");
+                DebugLogger.LogToFile($"📡 Info event requested - waiting for wallet response ({timeoutMs}ms timeout)");
 
-                // Wait up to 10 seconds for wallet info to be received
-                var timeout = Task.Delay(10000);
+                // Wait for wallet info to be received
+                var timeout = Task.Delay(timeoutMs);
                 var completed = await Task.WhenAny(_walletInfoComplete.Task, timeout);
 
                 if (completed == timeout)
@@ -242,11 +290,18 @@ namespace NostrWalletConnect
                     throw new TimeoutException("Timeout waiting for wallet info");
                 }
 
+                var success = await _walletInfoComplete.Task;
+                if (!success)
+                {
+                    throw new Exception("Failed to process wallet info event");
+                }
+
                 DebugLogger.LogToFile("✅ Wallet info retrieval completed successfully");
             }
             catch (Exception ex)
             {
-                DebugLogger.LogToFile($"⚠️ Failed to get wallet info: {ex.Message}"); 
+                DebugLogger.LogToFile($"⚠️ Failed to get wallet info: {ex.Message}");
+                throw; // Re-throw to allow caller to handle
             }
         }
 
@@ -289,7 +344,15 @@ namespace NostrWalletConnect
                     throw new TimeoutException("Request timed out");
                 }
 
-                return await tcs.Task;
+                var response = await tcs.Task;
+
+                // Optionally throw exceptions for NWC errors
+                if (throwOnNWCErrors && response.Error != null)
+                {
+                    throw new InvalidOperationException($"NWC Error: {response.Error.Code} - {response.Error.Message}");
+                }
+
+                return response;
             }
             catch (Exception ex)
             {
@@ -325,9 +388,9 @@ namespace NostrWalletConnect
         {
             if (debugMode)
             {
-                Debug.Log("Connected to Nostr relay");
+                Debug.Log("Connected to Nostr relay (waiting for wallet verification...)");
             }
-            OnConnected?.Invoke();
+            // Don't fire OnConnected here anymore - only fire after wallet info is received
         }
 
         private void HandleDisconnected()
@@ -488,6 +551,23 @@ namespace NostrWalletConnect
                     Debug.Log($"Pending requests: {string.Join(", ", _pendingRequests.Keys)}");
                 }
 
+                // Check for errors and fire appropriate events
+                if (response.Error != null)
+                {
+                    if (debugMode)
+                    {
+                        Debug.LogError($"NWC Error Response ({cacheInfo}): {response.Error.Code} - {response.Error.Message}");
+                    }
+                    DebugLogger.LogError($"NWC Error Response ({cacheInfo}): {response.Error.Code} - {response.Error.Message}");
+
+                    // Fire error event for NWC response errors
+                    OnError?.Invoke($"NWC Error: {response.Error.Code} - {response.Error.Message}");
+                }
+                else if (debugMode)
+                {
+                    Debug.Log($"NWC Success Response ({cacheInfo}): {JsonConvert.SerializeObject(response.Result)}");
+                }
+
                 OnResponse?.Invoke(response);
                 OnResponseWithCache?.Invoke(response, cacheInfo);
 
@@ -544,12 +624,28 @@ namespace NostrWalletConnect
         public void SetDebugMode(bool enabled)
         {
             debugMode = enabled;
+            DebugLogger.SetDebugEnabled(enabled);
+        }
+
+        public void SetLogToFile(bool enabled)
+        {
+            logToFile = enabled;
+            DebugLogger.SetFileLoggingEnabled(enabled);
+        }
+
+        public void SetThrowOnNWCErrors(bool enabled)
+        {
+            throwOnNWCErrors = enabled;
         }
 
         private void OnDestroy()
         {
             _ = DisconnectAsync();
             _webSocket?.Dispose();
+            if (_instance)
+            {
+                _instance = null;
+            }
         }
 
         #region Unity Inspector Helper Methods

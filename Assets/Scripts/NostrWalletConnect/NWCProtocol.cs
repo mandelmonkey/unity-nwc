@@ -66,6 +66,72 @@ namespace NostrWalletConnect
         {
             Result = new Dictionary<string, object>();
         }
+
+        /// <summary>
+        /// Check if the response contains an error
+        /// </summary>
+        public bool HasError => Error != null;
+
+        /// <summary>
+        /// Check if the response is successful (no error)
+        /// </summary>
+        public bool IsSuccess => Error == null;
+
+        /// <summary>
+        /// Get a formatted error message, or null if no error
+        /// </summary>
+        public string ErrorMessage => Error != null ? $"{Error.Code}: {Error.Message}" : null;
+
+        /// <summary>
+        /// Throw an exception if this response contains an error
+        /// </summary>
+        public void ThrowIfError()
+        {
+            if (Error != null)
+            {
+                throw new InvalidOperationException($"NWC Error: {Error.Code} - {Error.Message}");
+            }
+        }
+
+        /// <summary>
+        /// For PayInvoice responses, verify that the preimage matches the original invoice
+        /// </summary>
+        /// <param name="originalInvoice">The original BOLT11 invoice that was paid</param>
+        /// <returns>True if preimage is valid, false if invalid or not applicable</returns>
+        public bool VerifyPaymentPreimage(string originalInvoice)
+        {
+            // Only applicable for successful pay_invoice responses
+            if (HasError || ResultType != "pay_invoice" || string.IsNullOrEmpty(originalInvoice))
+                return false;
+
+            // Extract preimage from response
+            if (!Result.TryGetValue("preimage", out var preimageObj) || preimageObj == null)
+            {
+                DebugLogger.LogWarning("No preimage found in pay_invoice response");
+                return false;
+            }
+
+            string preimage = preimageObj.ToString();
+            if (string.IsNullOrEmpty(preimage))
+            {
+                DebugLogger.LogWarning("Empty preimage in pay_invoice response");
+                return false;
+            }
+
+            // Use BOLT11 decoder to verify preimage
+            return BOLT11Decoder.VerifyPreimage(originalInvoice, preimage);
+        }
+
+        /// <summary>
+        /// Get the preimage from a successful pay_invoice response
+        /// </summary>
+        public string GetPreimage()
+        {
+            if (HasError || !Result.TryGetValue("preimage", out var preimageObj))
+                return null;
+
+            return preimageObj?.ToString();
+        }
     }
 
     [Serializable]
@@ -285,7 +351,7 @@ namespace NostrWalletConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Failed to parse NWC response: {ex.Message}");
+                DebugLogger.LogErrorToFile($"Failed to parse NWC response: {ex.Message}");
                 return new NWCResponse
                 {
                     Error = new NWCError
@@ -330,14 +396,14 @@ namespace NostrWalletConnect
             {
                 var message = new object[] { "EVENT", nostrEvent };
                 var jsonResult = JsonConvert.SerializeObject(message, Formatting.None);
-                Debug.Log($"✅ WebSocket message created successfully: {jsonResult.Length} chars");
+                DebugLogger.LogToFile($"✅ WebSocket message created successfully: {jsonResult.Length} chars");
                 return jsonResult;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"❌ Failed to create WebSocket message: {ex.Message}");
-                Debug.LogError($"Event content length: {nostrEvent.Content?.Length ?? 0}");
-                Debug.LogError($"Event content preview: {nostrEvent.Content?.Substring(0, Math.Min(100, nostrEvent.Content?.Length ?? 0))}...");
+                DebugLogger.LogErrorToFile($"❌ Failed to create WebSocket message: {ex.Message}");
+                DebugLogger.LogErrorToFile($"Event content length: {nostrEvent.Content?.Length ?? 0}");
+                DebugLogger.LogErrorToFile($"Event content preview: {nostrEvent.Content?.Substring(0, Math.Min(100, nostrEvent.Content?.Length ?? 0))}...");
                 throw;
             }
         }

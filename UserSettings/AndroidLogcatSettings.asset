@@ -3,23 +3,11 @@
     "m_SelectedProcess": {
         "deviceId": "RFCW41KVFMB",
         "name": "com.UnityTechnologies.com.unity.template.urpblank",
-        "processId": 13445,
+        "processId": 6342,
         "exited": false
     },
     "m_SelectedPriority": 0,
     "m_KnownProcessesForSerialization": [
-        {
-            "deviceId": "RFCW41KVFMB",
-            "name": "com.UnityTechnologies.com.unity.template.urpblank",
-            "processId": 4536,
-            "exited": true
-        },
-        {
-            "deviceId": "RFCW41KVFMB",
-            "name": "com.UnityTechnologies.com.unity.template.urpblank",
-            "processId": 6427,
-            "exited": true
-        },
         {
             "deviceId": "RFCW41KVFMB",
             "name": "com.UnityTechnologies.com.unity.template.urpblank",
@@ -36,6 +24,24 @@
             "deviceId": "RFCW41KVFMB",
             "name": "com.UnityTechnologies.com.unity.template.urpblank",
             "processId": 13445,
+            "exited": true
+        },
+        {
+            "deviceId": "RFCW41KVFMB",
+            "name": "com.UnityTechnologies.com.unity.template.urpblank",
+            "processId": 29540,
+            "exited": true
+        },
+        {
+            "deviceId": "RFCW41KVFMB",
+            "name": "com.UnityTechnologies.com.unity.template.urpblank",
+            "processId": 698,
+            "exited": false
+        },
+        {
+            "deviceId": "RFCW41KVFMB",
+            "name": "com.UnityTechnologies.com.unity.template.urpblank",
+            "processId": 6342,
             "exited": false
         }
     ],

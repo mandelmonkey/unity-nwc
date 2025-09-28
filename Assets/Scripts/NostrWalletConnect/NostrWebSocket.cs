@@ -39,7 +39,7 @@ namespace NostrWalletConnect
                 _isConnected = true;
 
                 OnConnected?.Invoke();
-                Debug.Log($"Connected to relay: {uri}");
+                DebugLogger.LogToFile($"Connected to relay: {uri}");
 
                 _ = Task.Run(ReceiveLoop);
 
@@ -47,7 +47,7 @@ namespace NostrWalletConnect
             }
             catch (Exception ex)
             {
-                Debug.LogError($"WebSocket connection error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"WebSocket connection error: {ex.Message}");
                 OnError?.Invoke($"Connection error: {ex.Message}");
                 return false;
             }
@@ -69,11 +69,11 @@ namespace NostrWalletConnect
                 _cancellationTokenSource?.Dispose();
 
                 OnDisconnected?.Invoke();
-                Debug.Log("Disconnected from relay");
+                DebugLogger.LogToFile("Disconnected from relay");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"WebSocket disconnection error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"WebSocket disconnection error: {ex.Message}");
                 OnError?.Invoke($"Disconnection error: {ex.Message}");
             }
         }
@@ -95,11 +95,11 @@ namespace NostrWalletConnect
                     _cancellationTokenSource.Token
                 );
 
-                Debug.Log($"Sent message: {message}");
+                DebugLogger.LogToFile($"Sent message: {message}");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Send message error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"Send message error: {ex.Message}");
                 OnError?.Invoke($"Send error: {ex.Message}");
                 throw;
             }
@@ -153,7 +153,7 @@ namespace NostrWalletConnect
                         }
                         else if (result.MessageType == WebSocketMessageType.Close)
                         {
-                            Debug.Log("WebSocket closed by server");
+                            DebugLogger.LogToFile("WebSocket closed by server");
                             return;
                         }
                     }
@@ -162,7 +162,7 @@ namespace NostrWalletConnect
                     if (result.MessageType == WebSocketMessageType.Text)
                     {
                         var completeMessage = messageBuilder.ToString();
-                        Debug.Log($"Received complete message ({completeMessage.Length} chars): {completeMessage.Substring(0, Math.Min(200, completeMessage.Length))}...");
+                        DebugLogger.LogToFile($"Received complete message ({completeMessage.Length} chars): {completeMessage.Substring(0, Math.Min(200, completeMessage.Length))}...");
 
                         lock (_lockObject)
                         {
@@ -175,11 +175,11 @@ namespace NostrWalletConnect
             }
             catch (OperationCanceledException)
             {
-                Debug.Log("WebSocket receive loop cancelled");
+                DebugLogger.LogToFile("WebSocket receive loop cancelled");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"WebSocket receive error: {ex.Message}");
+                DebugLogger.LogErrorToFile($"WebSocket receive error: {ex.Message}");
                 OnError?.Invoke($"Receive error: {ex.Message}");
             }
             finally

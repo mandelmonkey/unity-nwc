@@ -32,7 +32,7 @@ namespace NostrWalletConnect
                 }
 
                 var version = payloadBytes[0];
-                Debug.Log($"NIP-44 version: {version}");
+                DebugLogger.LogToFile($"NIP-44 version: {version}");
 
                 if (version != 1 && version != 2)
                 {
@@ -86,7 +86,7 @@ namespace NostrWalletConnect
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"NIP-44 decryption failed: {ex.Message}");
+                DebugLogger.LogWarningToFile($"NIP-44 decryption failed: {ex.Message}");
                 throw;
             }
         }
@@ -95,7 +95,7 @@ namespace NostrWalletConnect
         {
             try
             {
-                Debug.Log($"Computing conversation key from privkey: {privateKeyHex.Substring(0, 8)}... and pubkey: {publicKeyHex.Substring(0, 8)}...");
+                DebugLogger.LogToFile($"Computing conversation key from privkey: {privateKeyHex.Substring(0, 8)}... and pubkey: {publicKeyHex.Substring(0, 8)}...");
 
                 var privateKeyBytes = NostrCrypto.HexToBytes(privateKeyHex);
                 var publicKeyBytes = NostrCrypto.HexToBytes(publicKeyHex);
@@ -118,14 +118,14 @@ namespace NostrWalletConnect
                     try
                     {
                         pubKey = ECPubKey.Create(fullPubkeyBytes);
-                        Debug.Log("Using even y-coordinate (0x02 prefix)");
+                        DebugLogger.LogToFile("Using even y-coordinate (0x02 prefix)");
                     }
                     catch
                     {
                         // Try with odd y-coordinate if even fails
                         fullPubkeyBytes[0] = 0x03;
                         pubKey = ECPubKey.Create(fullPubkeyBytes);
-                        Debug.Log("Using odd y-coordinate (0x03 prefix)");
+                        DebugLogger.LogToFile("Using odd y-coordinate (0x03 prefix)");
                     }
                 }
                 else
@@ -143,7 +143,7 @@ namespace NostrWalletConnect
                 // Extract X coordinate (skip the prefix byte, take next 32 bytes)
                 var sharedX = new byte[32];
                 Array.Copy(sharedBytes, 1, sharedX, 0, 32);
-                Debug.Log($"Shared X coordinate ({sharedX.Length} bytes): {BitConverter.ToString(sharedX).Replace("-", "").Substring(0, 16)}...");
+                DebugLogger.LogToFile($"Shared X coordinate ({sharedX.Length} bytes): {BitConverter.ToString(sharedX).Replace("-", "").Substring(0, 16)}...");
 
                 // NIP-44: Use HKDF-Extract with "nip44-v2" salt
                 // Following RFC 5869 HKDF-Extract: HMAC-Hash(salt, IKM)
@@ -154,12 +154,12 @@ namespace NostrWalletConnect
                     conversationKey = hmac.ComputeHash(sharedX);
                 }
 
-                Debug.Log($"Computed conversation key: {BitConverter.ToString(conversationKey).Replace("-", "").Substring(0, 16)}...");
+                DebugLogger.LogToFile($"Computed conversation key: {BitConverter.ToString(conversationKey).Replace("-", "").Substring(0, 16)}...");
                 return conversationKey;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"NIP-44 conversation key computation failed: {ex.Message}");
+                DebugLogger.LogErrorToFile($"NIP-44 conversation key computation failed: {ex.Message}");
                 throw;
             }
         }
@@ -225,9 +225,9 @@ namespace NostrWalletConnect
         private static byte[] ComputeHmac(byte[] key, byte[] ciphertext, byte[] aad)
         {
             // NIP-44: HMAC(key, aad || ciphertext)
-            Debug.Log($"Computing HMAC with key: {BitConverter.ToString(key).Replace("-", "").Substring(0, 16)}...");
-            Debug.Log($"AAD (salt) length: {aad.Length}, first bytes: {BitConverter.ToString(aad).Replace("-", "").Substring(0, 16)}...");
-            Debug.Log($"Ciphertext length: {ciphertext.Length}, first bytes: {BitConverter.ToString(ciphertext).Replace("-", "").Substring(0, Math.Min(32, ciphertext.Length * 2))}...");
+            DebugLogger.LogToFile($"Computing HMAC with key: {BitConverter.ToString(key).Replace("-", "").Substring(0, 16)}...");
+            DebugLogger.LogToFile($"AAD (salt) length: {aad.Length}, first bytes: {BitConverter.ToString(aad).Replace("-", "").Substring(0, 16)}...");
+            DebugLogger.LogToFile($"Ciphertext length: {ciphertext.Length}, first bytes: {BitConverter.ToString(ciphertext).Replace("-", "").Substring(0, Math.Min(32, ciphertext.Length * 2))}...");
 
             using (var hmac = new HMACSHA256Crypto(key))
             {
@@ -236,7 +236,7 @@ namespace NostrWalletConnect
                 Array.Copy(ciphertext, 0, input, aad.Length, ciphertext.Length);
 
                 var result = hmac.ComputeHash(input);
-                Debug.Log($"Computed HMAC: {BitConverter.ToString(result).Replace("-", "")}");
+                DebugLogger.LogToFile($"Computed HMAC: {BitConverter.ToString(result).Replace("-", "")}");
                 return result;
             }
         }
@@ -415,74 +415,74 @@ namespace NostrWalletConnect
             // Method 1: Try improved ChaCha20 simulation first
             try
             {
-                Debug.Log("Trying improved ChaCha20 simulation...");
+                DebugLogger.LogToFile("Trying improved ChaCha20 simulation...");
                 var result = DecryptWithXOR(ciphertext, key, nonce);
 
                 // Check if result looks like valid JSON/text
                 if (IsValidUtf8Text(result))
                 {
-                    Debug.Log("✅ Improved ChaCha20 simulation succeeded!");
+                    DebugLogger.LogToFile("✅ Improved ChaCha20 simulation succeeded!");
                     return result;
                 }
                 else
                 {
-                    Debug.LogWarning("ChaCha20 simulation produced invalid UTF-8");
+                    DebugLogger.LogWarningToFile("ChaCha20 simulation produced invalid UTF-8");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"❌ Improved ChaCha20 simulation failed: {ex.Message}");
+                DebugLogger.LogWarningToFile($"❌ Improved ChaCha20 simulation failed: {ex.Message}");
                 lastException = ex;
             }
 
             // Method 2: Try AES-GCM
             try
             {
-                Debug.Log("Trying AES-GCM...");
+                DebugLogger.LogToFile("Trying AES-GCM...");
                 var result = DecryptWithAESGCM(ciphertext, key, nonce, expectedMac);
                 if (IsValidUtf8Text(result))
                 {
-                    Debug.Log("✅ AES-GCM succeeded!");
+                    DebugLogger.LogToFile("✅ AES-GCM succeeded!");
                     return result;
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"❌ AES-GCM failed: {ex.Message}");
+                DebugLogger.LogWarningToFile($"❌ AES-GCM failed: {ex.Message}");
                 lastException = ex;
             }
 
             // Method 3: Try AES-CBC fallback
             try
             {
-                Debug.Log("Trying AES-CBC fallback...");
+                DebugLogger.LogToFile("Trying AES-CBC fallback...");
                 var result = DecryptWithAESCBC(ciphertext, key, nonce);
                 if (IsValidUtf8Text(result))
                 {
-                    Debug.Log("✅ AES-CBC succeeded!");
+                    DebugLogger.LogToFile("✅ AES-CBC succeeded!");
                     return result;
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"❌ AES-CBC failed: {ex.Message}");
+                DebugLogger.LogWarningToFile($"❌ AES-CBC failed: {ex.Message}");
                 lastException = ex;
             }
 
             // Method 4: Try simplified CTR mode
             try
             {
-                Debug.Log("Trying simplified CTR mode...");
+                DebugLogger.LogToFile("Trying simplified CTR mode...");
                 var result = DecryptWithSimplifiedCTR(ciphertext, key, nonce);
                 if (IsValidUtf8Text(result))
                 {
-                    Debug.Log("✅ Simplified CTR succeeded!");
+                    DebugLogger.LogToFile("✅ Simplified CTR succeeded!");
                     return result;
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"❌ Simplified CTR failed: {ex.Message}");
+                DebugLogger.LogWarningToFile($"❌ Simplified CTR failed: {ex.Message}");
                 lastException = ex;
             }
 
@@ -537,7 +537,7 @@ namespace NostrWalletConnect
 
         private static string DecryptWithAESGCM(byte[] ciphertext, byte[] key, byte[] nonce, byte[] expectedMac)
         {
-            Debug.Log($"Attempting AES decryption with key length: {key.Length}, ciphertext length: {ciphertext.Length}, nonce length: {nonce.Length}");
+            DebugLogger.LogToFile($"Attempting AES decryption with key length: {key.Length}, ciphertext length: {ciphertext.Length}, nonce length: {nonce.Length}");
 
             try
             {
@@ -551,17 +551,17 @@ namespace NostrWalletConnect
                     var tag = new byte[16];
                     Array.Copy(expectedMac, 0, tag, 0, Math.Min(16, expectedMac.Length));
 
-                    Debug.Log($"AES-GCM: IV={BitConverter.ToString(iv).Replace("-", "")}, Tag={BitConverter.ToString(tag).Replace("-", "")}");
+                    DebugLogger.LogToFile($"AES-GCM: IV={BitConverter.ToString(iv).Replace("-", "")}, Tag={BitConverter.ToString(tag).Replace("-", "")}");
 
                     aes.Decrypt(iv, ciphertext, tag, plaintext);
                     var result = Encoding.UTF8.GetString(plaintext);
-                    Debug.Log("✅ AES-GCM decryption succeeded!");
+                    DebugLogger.LogToFile("✅ AES-GCM decryption succeeded!");
                     return result;
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"❌ AES-GCM decryption failed: {ex.Message}");
+                DebugLogger.LogWarningToFile($"❌ AES-GCM decryption failed: {ex.Message}");
             }
 
             throw new Exception("AES-GCM not available and all fallback methods failed");
@@ -667,7 +667,7 @@ namespace NostrWalletConnect
                 DebugLogger.LogToFile($"Message preview: {message.Substring(0, Math.Min(50, message.Length))}...");
                 DebugLogger.LogToFile($"Recipient pubkey: {recipientPublicKey}");
                 DebugLogger.LogToFile($"Sender privkey: {senderPrivateKey.Substring(0, 8)}...");
-                Debug.Log("Attempting NIP-44 encryption...");
+                DebugLogger.LogToFile("Attempting NIP-44 encryption...");
 
                 // Compute conversation key
                 var conversationKey = ComputeNIP44ConversationKey(senderPrivateKey, recipientPublicKey);
@@ -708,7 +708,7 @@ namespace NostrWalletConnect
             {
                 DebugLogger.LogErrorToFile($"❌ NIP-44 encryption failed: {ex.Message}");
                 DebugLogger.LogErrorToFile($"Stack trace: {ex.StackTrace}");
-                Debug.LogError($"NIP-44 encryption failed: {ex.Message}");
+                DebugLogger.LogErrorToFile($"NIP-44 encryption failed: {ex.Message}");
                 throw;
             }
         }

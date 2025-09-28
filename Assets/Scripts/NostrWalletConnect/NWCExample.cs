@@ -8,11 +8,10 @@ namespace NostrWalletConnect
 {
     public class NWCExample : MonoBehaviour
     {
-        [Header("UI References")]
+        [Header("UI References")] 
         [SerializeField] private InputField connectionStringInput;
         [SerializeField] private Button connectButton;
-        [SerializeField] private Button disconnectButton;
-        [SerializeField] private Button scanQRButton;
+        [SerializeField] private Button disconnectButton; 
         [SerializeField] private Button getInfoButton;
         [SerializeField] private Button requestInfoEventButton;
         [SerializeField] private Button getBalanceButton;
@@ -23,49 +22,44 @@ namespace NostrWalletConnect
         [SerializeField] private Button payInvoiceButton;
         [SerializeField] private Text statusText;
         [SerializeField] private Text responseText;
-
-        [Header("NWC Settings")]
-        [SerializeField] private NostrWalletConnect nwc;
-
-        [Header("QR Scanner")]
-        [SerializeField] private NWCScannerManager scannerManager;
-        [SerializeField] private ZBDQRScanner zbdQRScanner;
-
+ 
+        [SerializeField] private ZBDQRScanner qrScanner;
+        private string connectionString;
         private void Start()
         {
             SetupUI();
-            SetupNWCEvents();
-            SetupQRScanner();
+            SetupNWCEvents(); 
             LoadSavedConnectionString();
+
+            qrScanner.OnQRCodeDetected += OnQRCodeDetected;
         }
 
-        private void SetupQRScanner()
+        private void OnDestroy()
         {
-            if (zbdQRScanner != null)
-            {
-                zbdQRScanner.OnQRCodeDetected += OnQRCodeScanned;
-                zbdQRScanner.OnNWCConnectionReady += OnNWCConnectionReady;
-                zbdQRScanner.OnScanError += OnQRScanError;
-            }
+            qrScanner.OnQRCodeDetected -= OnQRCodeDetected;
         }
 
-        private void LoadSavedConnectionString()
+        private void OnQRCodeDetected(String nwcConnectionString)
         {
+            connectionString = nwcConnectionString;
             if (connectionStringInput != null)
             {
-                // Try to load saved connection string
-                string savedConnection = ZBDQRScanner.GetSavedConnectionString();
-
-                if (!string.IsNullOrEmpty(savedConnection))
-                {
-                    connectionStringInput.text = savedConnection;
-                    UpdateStatus("Loaded saved connection string", Color.blue);
-                }
-                else if (string.IsNullOrEmpty(connectionStringInput.text))
-                {
-                    connectionStringInput.text = "nostr+walletconnect://YOUR_WALLET_PUBKEY?relay=wss://relay.example.com&secret=YOUR_SECRET";
-                }
+                connectionStringInput.text = nwcConnectionString;
             }
+
+            ConnectToWallet();
+        }
+ 
+        private void LoadSavedConnectionString()
+        { 
+                // Try to load saved connection string
+                connectionString = ZBDQRScanner.GetSavedConnectionString();
+
+                if (connectionStringInput != null)
+                {
+                    connectionStringInput.text = connectionString;
+                }
+  
         }
 
         private void SetupUI()
@@ -75,9 +69,7 @@ namespace NostrWalletConnect
 
             if (disconnectButton != null)
                 disconnectButton.onClick.AddListener(() => _ = DisconnectFromWallet());
-
-            if (scanQRButton != null)
-                scanQRButton.onClick.AddListener(StartQRScan);
+ 
 
             if (getInfoButton != null)
                 getInfoButton.onClick.AddListener(() => _ = GetWalletInfo());
@@ -96,68 +88,30 @@ namespace NostrWalletConnect
 
             UpdateButtonStates(false);
         }
-
-        private void StartQRScan()
-        {
-            if (zbdQRScanner != null)
-            {
-                UpdateStatus("Starting QR scanner...", Color.blue);
-                zbdQRScanner.ShowScanner();
-            }
-            else if (scannerManager != null)
-            {
-                UpdateStatus("Starting QR scanner...", Color.blue);
-                scannerManager.StartQRScan();
-            }
-            else
-            {
-                UpdateStatus("QR scanner not available", Color.red);
-            }
-        }
-
-        private void OnQRCodeScanned(string connectionString)
-        {
-            if (connectionStringInput != null)
-            {
-                connectionStringInput.text = connectionString;
-            }
-            UpdateStatus("QR code scanned successfully!", Color.green);
-        }
-
-        private void OnNWCConnectionReady(string connectionString)
-        {
-            UpdateStatus("Auto-connecting to wallet...", Color.blue);
-            _ = ConnectToWallet();
-        }
-
-        private void OnQRScanError(string error)
-        {
-            UpdateStatus($"QR scan error: {error}", Color.red);
-        }
-
+   
         private void SetupNWCEvents()
         {
-            if (nwc != null)
+            if (NostrWalletConnect._instance != null)
             {
-                nwc.OnConnected += () =>
+                NostrWalletConnect._instance.OnConnected += () =>
                 {
                     UpdateStatus("Connected to wallet", Color.green);
                     UpdateButtonStates(true);
                 };
 
-                nwc.OnDisconnected += () =>
+                NostrWalletConnect._instance.OnDisconnected += () =>
                 {
                     UpdateStatus("Disconnected from wallet", Color.red);
                     UpdateButtonStates(false);
                 };
 
-                nwc.OnError += (error) =>
+                NostrWalletConnect._instance.OnError += (error) =>
                 {
                     UpdateStatus($"Error: {error}", Color.red);
                 };
 
                 // Use the new event that includes cache information
-                nwc.OnResponseWithCache += (response, cacheInfo) =>
+                NostrWalletConnect._instance.OnResponseWithCache += (response, cacheInfo) =>
                 {
                     if (response.Error != null)
                     {
@@ -170,7 +124,7 @@ namespace NostrWalletConnect
                 };
 
                 // Keep the old event for backwards compatibility (but OnResponseWithCache takes precedence)
-                nwc.OnResponse += (response) =>
+                NostrWalletConnect._instance.OnResponse += (response) =>
                 {
                     // Only log without cache info if needed for debugging
                     Debug.Log($"Response received (legacy event): {response.ResultType}");
@@ -180,27 +134,37 @@ namespace NostrWalletConnect
 
         private async Task ConnectToWallet()
         {
-            if (nwc == null || connectionStringInput == null)
+            
+            if (string.IsNullOrEmpty(this.connectionString) && connectionStringInput != null)
             {
-                UpdateStatus("NWC component or connection string input not found", Color.red);
+                if (!string.IsNullOrEmpty(connectionStringInput.text))
+                {
+                    connectionString = connectionStringInput.text;
+                }
+            }
+            
+            if (string.IsNullOrEmpty(this.connectionString))
+            {
+                UpdateStatus("Connection String not set", Color.red);
                 return;
             }
 
-            var connectionString = connectionStringInput.text.Trim();
-            if (string.IsNullOrEmpty(connectionString) || connectionString.Contains("YOUR_WALLET_PUBKEY"))
-            {
-                UpdateStatus("Please enter a valid NWC connection string", Color.red);
-                return;
-            }
+          
 
+            connectionString = connectionString.Trim();
+             
             try
             {
                 UpdateStatus("Connecting...", Color.yellow);
-                var success = await nwc.ConnectAsync(connectionString);
+                var success = await NostrWalletConnect._instance.ConnectAsync(connectionString);
 
                 if (!success)
                 {
                     UpdateStatus("Failed to connect", Color.red);
+                }
+                else
+                {
+                    PlayerPrefs.SetString("NWC_ConnectionString", connectionString);
                 }
             }
             catch (Exception ex)
@@ -211,11 +175,11 @@ namespace NostrWalletConnect
 
         private async Task DisconnectFromWallet()
         {
-            if (nwc == null) return;
+            if (NostrWalletConnect._instance == null) return;
 
             try
             {
-                await nwc.DisconnectAsync();
+                await NostrWalletConnect._instance.DisconnectAsync();
             }
             catch (Exception ex)
             {
@@ -230,7 +194,7 @@ namespace NostrWalletConnect
             try
             {
                 UpdateStatus("Getting wallet info...", Color.yellow);
-                await nwc.GetInfoAsync();
+                await NostrWalletConnect._instance.GetInfoAsync();
             }
             catch (Exception ex)
             {
@@ -245,7 +209,7 @@ namespace NostrWalletConnect
             try
             {
                 UpdateStatus("Requesting wallet info event (kind 13194)...", Color.yellow);
-                await nwc.RequestWalletInfoEvent();
+                await NostrWalletConnect._instance.RequestWalletInfoEvent();
             }
             catch (Exception ex)
             {
@@ -260,7 +224,24 @@ namespace NostrWalletConnect
             try
             {
                 UpdateStatus("Getting wallet balance...", Color.yellow);
-                await nwc.GetBalanceAsync();
+                var response = await NostrWalletConnect._instance.GetBalanceAsync();
+
+                // Check for NWC errors
+                if (response.HasError)
+                {
+                    UpdateStatus($"Get balance error: {response.ErrorMessage}", Color.red);
+                    return;
+                }
+
+                // Success! Display balance
+                if (response.Result.TryGetValue("balance", out var balanceObj))
+                {
+                    UpdateStatus($"Balance: {balanceObj} sats", Color.green);
+                }
+                else
+                {
+                    UpdateStatus("Balance retrieved successfully", Color.green);
+                }
             }
             catch (Exception ex)
             {
@@ -284,7 +265,24 @@ namespace NostrWalletConnect
                 }
 
                 UpdateStatus("Creating invoice...", Color.yellow);
-                await nwc.MakeInvoiceAsync(amount, description);
+                var response = await NostrWalletConnect._instance.MakeInvoiceAsync(amount, description);
+
+                // Check for NWC errors
+                if (response.HasError)
+                {
+                    UpdateStatus($"Make invoice error: {response.ErrorMessage}", Color.red);
+                    return;
+                }
+
+                // Success! Display invoice
+                if (response.Result.TryGetValue("invoice", out var invoiceObj))
+                {
+                    UpdateStatus($"Invoice created: {invoiceObj}", Color.green);
+                }
+                else
+                {
+                    UpdateStatus("Invoice created successfully", Color.green);
+                }
             }
             catch (Exception ex)
             {
@@ -306,7 +304,28 @@ namespace NostrWalletConnect
                 }
 
                 UpdateStatus("Paying invoice...", Color.yellow);
-                await nwc.PayInvoiceAsync(invoice);
+                var response = await NostrWalletConnect._instance.PayInvoiceAsync(invoice);
+
+                // Check for NWC errors
+                if (response.HasError)
+                {
+                    UpdateStatus($"Pay invoice error: {response.ErrorMessage}", Color.red);
+                    return;
+                }
+
+                // Verify preimage cryptographically
+                bool isVerified = response.VerifyPaymentPreimage(invoice);
+                var preimage = response.GetPreimage();
+
+                if (isVerified)
+                {
+                    UpdateStatus($"✅ Payment verified! Preimage: {preimage?.Substring(0, 16)}...", Color.green);
+                }
+                else
+                {
+                    // Payment succeeded but preimage verification failed - this is suspicious
+                    UpdateStatus($"⚠️ Payment completed but preimage verification FAILED", Color.yellow);
+                }
             }
             catch (Exception ex)
             {
@@ -316,7 +335,7 @@ namespace NostrWalletConnect
 
         private bool IsConnected()
         {
-            if (nwc == null || !nwc.IsConnected)
+            if (NostrWalletConnect._instance == null || !NostrWalletConnect._instance.IsConnected)
             {
                 UpdateStatus("Not connected to wallet", Color.red);
                 return false;
